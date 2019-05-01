@@ -1,0 +1,117 @@
+#!/bin/bash
+
+
+
+function_files_init()
+{
+
+for i in `ls / | grep -vw proc | grep -v "sys" | egrep -v "files_first.txt|files_latest.txt"` ; 
+do  
+#echo $i ; 
+	find $i -type f -printf '%TY-%Tm-%Td %TT,%t,%s,%f,%u,%g,%M,/%p,%n\n' | sort -r >> files_first.txt; 
+done
+
+}
+
+
+function_files_check()
+{
+for i in `ls / | grep -vw proc | grep -v "sys"|egrep -v "files_first.txt|files_latest.txt" ` ; 
+do  
+#echo $i 
+	find $i -type f  -printf '%TY-%Tm-%Td %TT,%t,%s,%f,%u,%g,%M,/%p,%n\n' | sort -r >> files_latest.txt; 
+done
+}
+
+
+#sdiff -s 1.txt 2.txt 
+
+function_dir_init()
+{
+for i in `ls / | grep -vw proc | grep -v "sys" | egrep -v "dir_first.txt|dir_latest.txt"` ; 
+do  
+#echo $i ; 
+	find $i -type d -printf '%TY-%Tm-%Td %TT,%t,%s,%f,%u,%g,%M,/%p,%n\n' | sort -r >> dir_first.txt; 
+done
+}
+
+function_dir_check()
+{
+for i in `ls / | grep -vw proc | grep -v "sys"|egrep -v "dir_first.txt|dir_latest.txt" ` ; 
+do  
+#echo $i ; 
+	find $i -type d  -printf '%TY-%Tm-%Td %TT,%t,%s,%f,%u,%g,%M,/%p,%n\n' | sort -r >> dir_latest.txt; 
+done
+}
+
+
+
+
+function_link_init()
+{
+for i in `ls / | grep -vw proc | grep -v "sys" | egrep -v "link_first.txt|link_latest.txt"` ; 
+do  
+#echo $i ; 
+	find $i -type d -printf '%TY-%Tm-%Td %TT,%t,%s,%f,%u,%g,%M,/%p,%n\n' | sort -r >> link_first.txt; 
+done
+}
+
+function_link_check()
+{
+for i in `ls / | grep -vw proc | grep -v "sys"|egrep -v "link_first.txt|link_latest.txt" ` ; 
+do  
+#echo $i ; 
+	find $i -type d  -printf '%TY-%Tm-%Td %TT,%t,%s,%f,%u,%g,%M,/%p,%n\n' | sort -r >> link_latest.txt; 
+done
+}
+
+function_verify()
+{
+
+echo "Verifying Regular Files ...";
+sdiff -s files_first.txt files_latest.txt 2>/dev/null 1>/dev/null 
+if [[ $? -eq 0 ]]; then
+	echo "No Changes Found For Regular Files.";
+else
+	echo "Modification Found For Regular Files";
+	sdiff -s files_first.txt files_latest.txt > /tmp/file_exception.txt
+fi
+
+
+echo "Verifying Directories ...";
+sdiff -s dir_first.txt dir_latest.txt 2>/dev/null 1>/dev/null 
+if [[ $? -eq 0 ]]; then
+	echo "No Changes Found For Directories.";
+else
+	echo "Modification Found For Directories.";
+	sdiff -s dir_first.txt dir_latest.txt > /tmp/dir_exception.txt
+fi
+
+
+
+
+
+echo "Verifying Symbolic Links ...";
+sdiff -s link_first.txt link_latest.txt 2>/dev/null 1>/dev/null 
+if [[ $? -eq 0 ]]; then
+	echo "No Changes Found For Symbolic Links.";
+else
+	echo "Modification Found For Symbolic Links.";
+	sdiff -s link_first.txt link_latest.txt > /tmp/link_exception.txt
+fi
+
+}
+
+function_files_init
+function_files_check
+
+
+function_dir_init
+function_dir_check
+
+function_link_init
+function_link_check
+
+
+
+function_verify
