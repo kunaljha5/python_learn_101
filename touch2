@@ -1,0 +1,321 @@
+#!/bin/bash
+cd /
+
+
+###### Verify only Root Can Execute.
+if [ $EUID -ne 0 ]; then
+   echo "   This script must be run as root
+
+   exit code 1"
+   exit 1
+fi
+
+
+
+
+
+
+#### Verify Only Single Instance of this script gets executed.
+
+LOCKFILE=/tmp/.ids_lock.txt
+if [ -e ${LOCKFILE} ] && kill -0 `cat ${LOCKFILE}`; then
+    echo "$0 instance already running"
+    exit
+fi
+# make sure the lockfile is removed when we exit and then claim it
+trap "rm -f ${LOCKFILE}; exit" INT TERM EXIT
+echo $$ > ${LOCKFILE}
+
+
+
+file_init=/tmp/common_init.txt
+file_latest=/tmp/common_latest.txt
+
+function_files_init()
+{
+cd /
+echo "Collecting data for complete file system. this may take some time."
+cp /dev/null  $file_init
+echo "Scanning Regular Files ..."
+for i in `ls / | grep -vw proc | grep -v "sys"| grep -v snap ` ;
+do
+        find $i -type f  -printf '%TY-%Tm-%Td %TT,%s,MasterIDS-file,%u,%g,%M,/%p\n' | sort -r >> $file_init;
+done
+echo "Scanning Directories ..."
+for i in `ls / | grep -vw proc | grep -v "sys" | grep -v snap` ;
+do
+#echo $i ;
+        find $i -type d  -printf '%TY-%Tm-%Td %TT,%s,MasterIDS-dir,%u,%g,%M,/%p\n' | sort -r >> $file_init;
+done
+        echo "Scanning Symbolic Links ..."
+for i in `ls / | grep -vw proc | grep -v "sys" | grep -v snap` ;
+do
+#echo $i ;
+        find $i -type l  -printf '%TY-%Tm-%Td %TT,%s,MasterIDS-slink,%u,%g,%M,/%p\n' | sort -r >> $file_init;
+done
+
+
+echo "+----------------------------------------------------------------------------------------------+"
+cat $file_init | grep MasterIDS-file |wc -l| awk '{printf "|\t\t\tTotal Regular Files \t\t= \t %s\t\t\t\n",$1}'
+cat $file_init | grep MasterIDS-dir |wc -l| awk '{printf "|\t\t\tTotal Directories / Folders \t= \t %s\t\t\t\n",$1}'
+cat $file_init | grep MasterIDS-slink |wc -l| awk '{printf "|\t\t\tTotal Symbolic Links \t\t= \t %s\t\t\t\n",$1}'
+echo "+----------------------------------------------------------------------------------------------+"
+echo -e "\n\n\t\tInit Task Completed.\n\n"
+}
+
+
+function_files_check()
+{
+cd /
+cp /dev/null  $file_latest
+echo "Scanning Regular Files ..."
+for i in `ls / | grep -vw proc | grep -v "sys"| grep -v snap ` ;
+do
+        find $i -type f  -printf '%TY-%Tm-%Td %TT,%s,MasterIDS-file,%u,%g,%M,/%p\n' | sort -r >> $file_latest;
+done
+echo "Scanning Directories ..."
+for i in `ls / | grep -vw proc | grep -v "sys" | grep -v snap` ;
+do
+#echo $i ;
+        find $i -type d  -printf '%TY-%Tm-%Td %TT,%s,MasterIDS-dir,%u,%g,%M,/%p\n' | sort -r >> $file_latest;
+done
+        echo "Scanning Symbolic Links ..."
+for i in `ls / | grep -vw proc | grep -v "sys" | grep -v snap` ;
+do
+#echo $i ;
+        find $i -type l  -printf '%TY-%Tm-%Td %TT,%s,MasterIDS-slink,%u,%g,%M,/%p\n' | sort -r >> $file_latest;
+done
+
+
+echo "+----------------------------------------------------------------------------------------------+"
+cat $file_latest | grep MasterIDS-file |wc -l| awk '{printf "|\t\t\tTotal Regular Files \t\t= \t %s\t\t\t\n",$1}'
+cat $file_latest | grep MasterIDS-dir |wc -l| awk '{printf "|\t\t\tTotal Directories / Folders \t= \t %s\t\t\t\n",$1}'
+cat $file_latest | grep MasterIDS-slink |wc -l| awk '{printf "|\t\t\tTotal Symbolic Links \t\t= \t %s\t\t\t\n",$1}'
+echo "+----------------------------------------------------------------------------------------------+"
+echo -e "\n\n\t\tNormal Task Completed.\n\n"
+
+# Calling the Verify Function
+function_verify
+}
+
+
+
+
+
+function_modification_verify()
+{
+
+main_file=$1
+echo "Deleted"
+cat $main_file|grep '<'|cut -d, -f1-3| while read line
+do
+        OFILENAME=$(cat $file_init | grep "$line"| cut -d, -f7)
+        OTYPE=$(cat $file_init | grep "$line"| cut -d, -f3 |sed "s|MasterIDS-||g")
+        echo -e "\t\t\t$OTYPE: -> \t\t , $OFILENAME"
+
+done
+
+echo "Created"
+cat $main_file|grep '>'|cut -d'>' -f2|tr -d '\t'|cut -d, -f1-3| while read line
+do
+        nFILENAME=$(cat $file_latest | grep "$line"| cut -d, -f7)
+        nTYPE=$(cat $file_latest | grep "$line"| cut -d, -f3 |sed "s|MasterIDS-||g")
+
+        
+        echo -e "\t\t\t$nTYPE : -> \t\t , $nFILENAME"
+
+done
+
+#cat $main_file|grep '|'|cut -d, -f1-3| while read line
+#do
+#        OFILENAME=$(cat $file_init | grep "$line"| cut -d, -f7)
+#        OMTIME=$(cat $file_init | grep "$line"| cut -d, -f1 )
+#        OSIZE=$(cat $file_init | grep "$line"| cut -d, -f2 )
+#        OTYPE=$(cat $file_init | grep "$line"| cut -d, -f3 )
+#        OUID=$(cat $file_init | grep "$line"| cut -d, -f4 )
+#        OGID=$(cat $file_init | grep "$line"| cut -d, -f5 )
+#        OMODE=$(cat $file_init | grep "$line"| cut -d, -f6 )
+#done
+echo "Modified"
+cat $main_file|grep '|'| cut -d'|' -f2 |tr -d "\t"|cut -d, -f1-3| while read line
+do
+        nFILENAME=$(cat $file_latest | grep "$line"| cut -d, -f7)
+        nMTIME=$(cat $file_latest | grep "$line"| cut -d, -f1 )
+        nSIZE=$(cat $file_latest | grep "$line"| cut -d, -f2 )
+        nTYPE=$(cat $file_latest | grep "$line"| cut -d, -f3|sed "s|MasterIDS-||g" )
+        nUID=$(cat $file_latest | grep "$line"| cut -d, -f4 )
+        nGID=$(cat $file_latest | grep "$line"| cut -d, -f5 )
+        nMODE=$(cat $file_latest | grep "$line"| cut -d, -f6 )
+
+
+
+        
+        echo -e "\t\t\t$nTYPE: -> \t\t , $nFILENAME"
+
+
+
+done
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+function_verify()
+{
+cd /tmp
+
+rm -rf /tmp/file_exception.txt /tmp/dir_exception.txt  /tmp/link_exception.txt 2>/dev/null 1>/dev/null
+
+
+
+echo "Verifying Regular Files ...";
+sdiff -s $file_init $file_latest | grep "MasterIDS-file"  2>/dev/null 1>/dev/null
+if [[ $? -eq 1 ]]; then
+        echo "No Changes Found For Regular Files.";
+else
+        echo "Modification Found For Regular Files";
+        sdiff -s $file_init $file_latest | grep "MasterIDS-file" > /tmp/file_exception.txt
+        function_modification_verify /tmp/file_exception.txt
+fi
+
+
+
+
+echo "Verifying Directories ...";
+sdiff -s $file_init $file_latest | grep "MasterIDS-dir" 2>/dev/null 1>/dev/null
+if [[ $? -eq 1 ]]; then
+        echo "No Changes Found For Directories.";
+else
+        echo "Modification Found For Directories.";
+        sdiff -s $file_init $file_latest | grep "MasterIDS-dir" > /tmp/dir_exception.txt
+        function_modification_verify /tmp/dir_exception.txt
+fi
+
+
+
+
+
+echo "Verifying Symbolic Links ...";
+sdiff -s $file_init $file_latest | grep "MasterIDS-slink" 2>/dev/null 1>/dev/null
+if [[ $? -eq 1 ]]; then
+        echo "No Changes Found For Symbolic Links.";
+else
+        echo "Modification Found For Symbolic Links.";
+        sdiff -s $file_init $file_latest| grep "MasterIDS-slink" > /tmp/link_exception.txt
+        function_modification_verify /tmp/link_exception.txt
+fi
+
+}
+
+
+
+
+
+
+
+
+
+
+
+usage()
+{
+  echo -e "\n\n\n\n        Usage:\t\t $0 [ -i ]       \t=\t Init IDS Script
+        \t\t $0 [ -c name ]       \t=\t Verification of IDS Script by creating 'name.txt' file in /tmp/ path
+        \t\t $0 [ -o name ]       \t=\t To Save the screen output in /tmp/ with 'name'
+        \t\t $0 [ -f ]            \t=\t Init the IDS Script + Verify the IDS Script by creating 'IDSSample.txt' in /tmp/
+        \t\t $0 [ -h ]            \t=\t Prints Help String
+        \t\t $0 [ -v ]            \t=\t Print Version of the Script.
+
+        exit code 2\n\n\n"
+
+  exit 2
+}
+
+while getopts 'ifrh:c:o:' c
+do
+  case $c in
+    c) ACTION=CR; ACTION_ARG=$OPTARG ;;
+    o) ACTION=OP; ACTION_ARG=$OPTARG ;;
+    i) ACTION=INIT ;;
+    f) ACTION=FORCE; ACTION_ARG=IDSSample ;;
+    r) ACTION=NORMAL ;;
+    h) usage;;
+  esac
+
+  if [[ "$ACTION"  ==  CR   &&    ! -z  "$ACTION_ARG"   ]]
+  then
+        if [ ! -f "$file_init" ]
+        then
+                # trigger init function to check the current files,folders,symbolic links status.
+                function_files_init
+        else
+                touch /tmp/$ACTION_ARG.txt
+                function_files_check
+        fi
+  elif [[ "$ACTION" == OP  &&   ! -z "$ACTION_ARG" ]]
+  then
+        if [ ! -f  "$file_init" ]
+        then
+                # trigger init function to check the current files,folders,symbolic links status.
+                function_files_init
+        else
+                function_files_check | tee -a /tmp/${ACTION_ARG}-report.txt
+        fi
+  elif [[ "$ACTION" ==  INIT ]]
+  then
+        if [ ! -f  "$file_init" ]
+        then
+                # trigger init function to check the current files,folders,symbolic links status.
+                function_files_init
+        else
+                rm -rf $file_init
+                function_files_init
+        fi
+  elif [[ "$ACTION" == FORCE ]]
+  then
+        echo | tee -a /tmp/IDS-$(date '+%s').rpt
+        # ForceFully Removing the $file_init if exists.
+        rm -rf $file_init 2>/dev/null 1>/dev/null
+        # trigger init function to check the current files,folders,symbolic links status.
+        function_files_init 
+        touch /tmp/$ACTION_ARG.txt && echo -e "\t\t\t Touch Executed for '/tmp/$ACTION_ARG.txt' file."
+        function_files_check
+        mv $file_latest $file_init
+  elif [[ "$ACTION" == NORMAL ]]
+  then
+        function_files_check
+        mv $file_latest $file_init
+        
+  else
+        ##### Exiting due to unwanted reason.
+        usage
+  fi
+done
+
+if [ "$#" -eq "0" ];
+then
+        usage
+fi
+
+rm -f ${LOCKFILE}
+
+
+#function_files_init
+
+#function_files_check
+
+
+#function_verify
